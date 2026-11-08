@@ -17,7 +17,10 @@ Take a look for yourself and let me know your thoughts! [https://marleydoughty.g
 
 ### Preview
 
-![thinking-about-cats demo](images/thinking-about-cats-demo.gif)
+<img width="332" height="719" alt="Screenshot 2026-11-08 at 2 56 51 PM" src="https://github.com/user-attachments/assets/bf1b0d75-e92b-4254-9f33-bb2cd6e87ff9" />
+
+<img width="331" height="718" alt="Screenshot 2026-11-08 at 2 57 08 PM" src="https://github.com/user-attachments/assets/df514adc-c120-4942-bddb-bf609773709a" />
+<img width="333" height="721" alt="Screenshot 2026-11-08 at 2 57 36 PM" src="https://github.com/user-attachments/assets/84de1a0f-2ba4-454c-86ed-11197dad16ee" />
 
 
 ### Features
