@@ -18,157 +18,158 @@ const $loadingScreen = document.querySelector('.loading-screen');
 let imageValues = [];
 let factValues = [];
 let currentView = 'all';
+let currentPage = 0;
+let isFetching = false;
 
 async function fetchImages() {
+  if (isFetching) return;
+  isFetching = true;
   try {
     $loadingScreen.classList.remove('hidden');
     const response = await fetch(
-      'https://api.thecatapi.com/v1/images/search?limit=100&page=0'
+      `https://api.thecatapi.com/v1/images/search?limit=10&page=${currentPage}`
     );
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    imageValues = await response.json();
+    const newImages = await response.json();
+    imageValues = [...imageValues, ...newImages];
+    currentPage++;
     renderImages();
   } catch (error) {
     console.error('Error fetching images:', error);
   } finally {
     $loadingScreen.classList.add('hidden');
+    isFetching = false;
   }
 }
 
 function renderImages() {
   const imagesToRender =
     currentView === 'favorites' ? data.favorites : imageValues;
-  const imagesHTML = imagesToRender
-    .map(imageValue => {
-      const commentObj = data.comments.find(
-        comment => comment.imageId === imageValue.id
-      );
-      const isFavorite = data.favorites.includes(imageValue);
-      const commentHTML = commentObj ? `<p>${commentObj.textValue}</p>` : '';
-      const editingClass = imageValue.editing
-        ? 'comment-form'
-        : 'comment-form hidden';
-      const favoriteClass = isFavorite
-        ? 'fas fa-heart fave-heart'
-        : 'far fa-heart outline-heart';
 
-      return `
-    <div class="frame">
+  const alreadyRendered = $allImages.querySelectorAll('.frame').length;
+  const newImages = imagesToRender.slice(alreadyRendered);
+
+  // remove old sentinel before appending
+  const oldSentinel = document.getElementById('scroll-sentinel');
+  if (oldSentinel) oldSentinel.remove();
+
+  newImages.forEach(imageValue => {
+    const commentObj = data.comments.find(
+      comment => comment.imageId === imageValue.id
+    );
+    const isFavorite = data.favorites.some(fav => fav.id === imageValue.id);
+    const commentHTML = commentObj ? `<p>${commentObj.textValue}</p>` : '';
+    const favoriteClass = isFavorite
+      ? 'fas fa-heart fave-heart'
+      : 'far fa-heart outline-heart';
+
+    const frame = document.createElement('div');
+    frame.className = 'frame';
+    frame.innerHTML = `
       <div class="image-container" data-id="${imageValue.id}">
-        <img src="${imageValue.url}">
-        ${commentHTML}
-        <div class="comment-container">
-          <div class="${editingClass}">
-            <form id="form-input" name="comment">
-              <input type="text" placeholder="Add a comment..." id="comment-input" value="${
-                  commentObj ? commentObj.textValue : ''
-                }">
-              <div class="row sb">
-                <button type="button" id="delete-button" aria-label="Delete comment" class="icon-button">
-                  <i class="fas fa-trash-can"></i>
-                </button>
-                <button type="submit" id="save-button" aria-label="Save comment" class="icon-button">
-                  <i class="fas fa-check"></i>
-                </button>
-              </div>
+        <img src="${imageValue.url}" alt="Cat photo">
+        <div class="card-actions">
+          ${commentHTML ? `<div class="comment-display"><span class="comment-text">${commentObj.textValue}</span><button class="delete-comment" aria-label="Delete comment">✕</button></div>` : ''}
+          <div class="comment-bar">
+            <i class="${favoriteClass}" aria-label="Favorite"></i>
+            <form name="comment">
+              <input type="text" placeholder="Add a comment..." value="${commentObj ? commentObj.textValue : ''}">
+              <button type="submit" aria-label="Save comment" class="submit-comment hidden"><i class="fas fa-circle-arrow-up"></i></button>
             </form>
-          </div>
-          <div class="icons-container">
-            <i class="far fa-comment"></i>
-            <i class="${favoriteClass}"></i>
           </div>
         </div>
       </div>
-      </div>
     `;
-    })
-    .join('');
 
-  $allImages.innerHTML = imagesHTML;
+    const imageContainer = frame.querySelector('.image-container');
+    imageContainer.querySelector('.fa-heart').addEventListener('click', handleFavoriteImage);
+    imageContainer.querySelector('form').addEventListener('submit', handleSaveComment);
+    const deleteBtn = imageContainer.querySelector('.delete-comment');
+    if (deleteBtn) deleteBtn.addEventListener('click', handleDeleteComment);
+    const input = imageContainer.querySelector('input');
+    const submitBtn = imageContainer.querySelector('.submit-comment');
+    input.addEventListener('input', () => {
+      submitBtn.classList.toggle('hidden', input.value.trim() === '');
+    });
 
-  imagesToRender.forEach(imageValue => {
-    const imageContainer = $allImages.querySelector(
-      `.image-container[data-id="${imageValue.id}"]`
-    );
-    imageContainer
-      .querySelector('.fa-comment')
-      .addEventListener('click', clickedCommentIcon);
-    imageContainer
-      .querySelector('.fa-heart')
-      .addEventListener('click', handleFavoriteImage);
-    imageContainer
-      .querySelector('form')
-      .addEventListener('submit', handleSaveComment);
-    imageContainer
-      .querySelector('#delete-button')
-      .addEventListener('click', handleDeleteComment);
+    $allImages.appendChild(frame);
   });
-}
-fetchImages();
 
-function findImageIndex(target) {
-  const closestImageContainer = target.closest('.frame');
-  return Array.from($allImages.children).indexOf(closestImageContainer);
-}
-
-function clickedCommentIcon(event) {
-  if (event.target && event.target.tagName === 'I') {
-    const imageIndex = findImageIndex(event.target);
-    if (imageIndex !== undefined) {
-      imageValues[imageIndex].editing = !imageValues[imageIndex].editing;
-      renderImages();
-    }
+  // add sentinel for infinite scroll (only in 'all' view)
+  if (currentView !== 'favorites') {
+    const sentinel = document.createElement('div');
+    sentinel.id = 'scroll-sentinel';
+    $allImages.appendChild(sentinel);
+    scrollObserver.observe(sentinel);
   }
 }
+const scrollObserver = new IntersectionObserver(entries => {
+  if (entries[0].isIntersecting && currentView === 'all') {
+    fetchImages();
+  }
+}, { rootMargin: '200px' });
 
 function handleSaveComment(event) {
   event.preventDefault();
-  const textValue = event.target.querySelector('input').value;
-  const closestImageContainer = event.target.closest('.image-container');
-  const imageId = closestImageContainer.getAttribute('data-id');
+  const input = event.target.querySelector('input');
+  const textValue = input.value.trim();
+  if (!textValue) return;
 
-  const imageIndex = findImageIndex(event.target);
-  if (imageIndex !== undefined) {
-    imageValues[imageIndex].editing = false;
-    data.comments.push({
-      textValue,
-      imageId
+  const imageId = event.target.closest('.image-container').getAttribute('data-id');
+
+  const existingIndex = data.comments.findIndex(c => c.imageId === imageId);
+  if (existingIndex !== -1) {
+    data.comments[existingIndex].textValue = textValue;
+  } else {
+    data.comments.push({ textValue, imageId });
+  }
+
+  const cardActions = event.target.closest('.card-actions');
+  let commentDisplay = cardActions.querySelector('.comment-display');
+  if (!commentDisplay) {
+    commentDisplay = document.createElement('div');
+    commentDisplay.className = 'comment-display';
+    cardActions.insertBefore(commentDisplay, cardActions.querySelector('.comment-bar'));
+    commentDisplay.addEventListener('click', e => {
+      if (e.target.classList.contains('delete-comment')) handleDeleteComment(e);
     });
   }
-  renderImages();
+  commentDisplay.innerHTML = `<span class="comment-text">${textValue}</span><button class="delete-comment" aria-label="Delete comment">✕</button>`;
+
+  cardActions.querySelector('.comment-bar input').value = '';
+  cardActions.querySelector('.submit-comment').classList.add('hidden');
 }
 
 function handleDeleteComment(event) {
-  imageValues.forEach((image, index) => {
-    if (image.editing) {
-      const commentIndex = data.comments.findIndex(
-        comment => comment.imageId === image.id
-      );
-      if (commentIndex !== -1) {
-        data.comments.splice(commentIndex, 1);
-      }
-      imageValues[index].editing = false;
-    }
-  });
-  renderImages();
+  const imageId = event.target.closest('.image-container').getAttribute('data-id');
+  const commentIndex = data.comments.findIndex(c => c.imageId === imageId);
+  if (commentIndex !== -1) data.comments.splice(commentIndex, 1);
+
+  const commentDisplay = event.target.closest('.comment-display');
+  if (commentDisplay) commentDisplay.remove();
 }
 
 function handleFavoriteImage(event) {
-  const imageIndex = findImageIndex(event.target);
-  const image = imageValues[imageIndex];
-  if (data.favorites.includes(image)) {
-    data.favorites = data.favorites.filter(favImage => favImage !== image);
+  const imageId = event.target.closest('.image-container').getAttribute('data-id');
+  const image = imageValues.find(img => img.id === imageId);
+  if (!image) return;
+
+  const isFav = data.favorites.some(fav => fav.id === imageId);
+  if (isFav) {
+    data.favorites = data.favorites.filter(fav => fav.id !== imageId);
+    event.target.className = 'far fa-heart outline-heart';
   } else {
     data.favorites.push(image);
+    event.target.className = 'fas fa-heart fave-heart';
   }
-  renderImages();
 }
 
 function viewFavorites(event) {
   currentView = 'favorites';
   imageValues = [...data.favorites];
+  $allImages.innerHTML = '';
   $allImages.className = 'images';
   $factsSection.className = 'facts hidden';
   topImg.className = 'top-nav-item img';
@@ -194,6 +195,8 @@ function viewFacts(event) {
 function viewImages(event) {
   currentView = 'all';
   imageValues = [];
+  currentPage = 0;
+  $allImages.innerHTML = '';
   $allImages.className = 'images';
   $factsSection.className = 'facts hidden';
   topImg.className = 'active top-nav-item img';
@@ -202,35 +205,34 @@ function viewImages(event) {
   bottomFact.className = 'bottom-nav-item fact';
   topFav.className = 'top-nav-item fave';
   bottomFav.className = 'bottom-nav-item fave';
-  renderImages();
   fetchImages();
 }
 
 async function fetchFacts() {
   try {
-    const response = await fetch('https://cat-fact.herokuapp.com/facts');
+    const response = await fetch('https://catfact.ninja/facts?limit=20');
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    factValues = await response.json();
+    const json = await response.json();
+    factValues = json.data;
     renderFacts();
   } catch (error) {
     console.error('Error fetching facts:', error);
   }
 }
+fetchImages();
 fetchFacts();
 
-function renderFacts(event) {
-  const headerHTML = '<h1>Cat Facts</h1>';
-  const factsHTML = factValues
-    .map(
-      fact =>
-        `<li><span class="fa-li"><i class="fas fa-paw"></i></span>${fact.text}</li>`
-    )
-    .join('');
+function renderFacts() {
+  const factsHTML = factValues.map(fact => `
+    <div class="fact-card">
+      <i class="fas fa-paw fact-icon"></i>
+      <p class="fact-text">${fact.fact}</p>
+    </div>
+  `).join('');
 
-  $factsSection.innerHTML =
-    headerHTML + '<ul class="fa-ul">' + factsHTML + '</ul>';
+  $factsSection.innerHTML = '<h1>Cat Facts</h1><div class="facts-feed">' + factsHTML + '</div>';
 }
 
 $topNavFavorites.addEventListener('click', viewFavorites);

@@ -6,8 +6,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  font-family: 'Lancelot', cursive;
-  background-color: #f7d4de;
+  font-family: 'Quicksand', sans-serif;
+  background-color: #f2f2f2;
 }
 
 .container {
